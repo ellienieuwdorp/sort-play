@@ -9422,6 +9422,48 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         });
     }
 
+    if (filters.genreFilterEnabled && (filters.selectedGenres?.length > 0 || filters.includeNoGenreTracks)) {
+        if (!isHeadless) mainButton.innerText = "Filtering Genres...";
+
+        let trackGenreMap = filters.trackGenreMap || null;
+
+        // Convert from serialized array format back to Map if needed
+        if (trackGenreMap && !(trackGenreMap instanceof Map)) {
+            trackGenreMap = new Map(trackGenreMap);
+        }
+
+        // Fetch genres if not cached
+        if (!trackGenreMap) {
+            const result = await processGenreBatches(
+                filteredTracks,
+                (progress) => { if (!isHeadless) mainButton.innerText = `Genres ${progress}%`; }
+            );
+            trackGenreMap = result.trackGenreMap;
+
+            // Store for future use (convert Map to array for serialization)
+            filters.trackGenreMap = Array.from(trackGenreMap.entries());
+        }
+
+        // Apply genre filtering
+        if (filters.includeNoGenreTracks) {
+            const noGenreTracks = getTracksWithoutGenres(filteredTracks, trackGenreMap);
+            const genreMatchedTracks = filters.selectedGenres?.length > 0
+                ? filterTracksByGenres(filteredTracks, filters.selectedGenres, trackGenreMap, filters.matchAllGenres)
+                : [];
+
+            // Combine both sets, removing duplicates
+            const combinedUris = new Set([...noGenreTracks.map(t => t.uri), ...genreMatchedTracks.map(t => t.uri)]);
+            filteredTracks = filteredTracks.filter(t => combinedUris.has(t.uri));
+        } else if (filters.selectedGenres?.length > 0) {
+            filteredTracks = filterTracksByGenres(
+                filteredTracks,
+                filters.selectedGenres,
+                trackGenreMap,
+                filters.matchAllGenres
+            );
+        }
+    }
+
     const tracks = Array.from(new Map(filteredTracks.map(track => [track.uri, track])).values());
 
     if (!tracks || tracks.length === 0) {
@@ -10213,7 +10255,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     }
   }
 
-  async function showDynamicFilterModal(currentFilters) {
+  async function showDynamicFilterModal(currentFilters, sources = []) {
     return new Promise((resolve) => {
         const lastFmUsername = loadLastFmUsername();
         const isExcludeListenedDisabled = !lastFmUsername;
@@ -10373,6 +10415,36 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                       </div>
                   </div>
               </div>
+
+              <div class="settings-left-wrapper" id="genre-filter-wrapper">
+                  <div class="settings-title-wrapper">
+                      <div class="settings-title">Genre Filters</div>
+                      <label class="switch"><input type="checkbox" id="genreFilterToggle"><span class="sliderx"></span></label>
+                  </div>
+                  <div class="genre-filter-content">
+                      <div class="filter-mode-container" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 16px;">
+                          <div class="filter-mode-radio-group">
+                              <div class="filter-mode-title" style="color: #fff; font-size: 13px; font-weight: 500; margin-right: 8px;">Match Mode:</div>
+                              <label class="radio-button-container"><span class="radio-button"><input type="radio" name="genreMatchMode" value="any"><span class="radio-button-inner"></span></span><span class="radio-label">Match Any</span></label>
+                              <label class="radio-button-container"><span class="radio-button"><input type="radio" name="genreMatchMode" value="all"><span class="radio-button-inner"></span></span><span class="radio-label">Match All</span></label>
+                          </div>
+                      </div>
+                      <div class="setting-row" style="margin-bottom: 12px;">
+                          <span class="description">Include tracks without genres</span>
+                          <label class="switch"><input type="checkbox" id="includeNoGenreToggle"><span class="sliderx"></span></label>
+                      </div>
+                      <div style="margin-bottom: 12px;">
+                          <button id="select-genres-btn" class="main-buttons-button main-button-secondary" style="padding: 8px 18px; border-radius: 20px; border: 1px solid #666; cursor: pointer; color: white; font-weight: 500; font-size: 13px; transition: background-color 0.1s ease, border-color 0.1s ease; background-color: #282828; width: 100%;">
+                              Select Genres
+                          </button>
+                      </div>
+                      <div id="selected-genres-container" style="min-height: 40px; padding: 12px; background-color: #282828; border-radius: 8px;">
+                          <div id="selected-genres-display" style="color: #b3b3b3; font-size: 13px;"></div>
+                          <div id="selected-genres-tags" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;"></div>
+                      </div>
+                  </div>
+              </div>
+
               <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px;">
                   <button id="cancel-filters" class="main-buttons-button main-button-secondary" style="padding: 8px 18px; border-radius: 20px; font-weight: 550; font-size: 13px; text-transform: uppercase; cursor: pointer; border: none;">Cancel</button>
                   <button id="save-filters" class="main-buttons-button main-button-primary" style="padding: 8px 18px; border-radius: 20px; font-weight: 550; font-size: 13px; text-transform: uppercase; cursor: pointer; border: none;">Save</button>
@@ -10435,7 +10507,136 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         albumToggle.addEventListener('change', e => filterAlbum = e.target.checked);
         artistToggle.addEventListener('change', e => filterArtist = e.target.checked);
         matchWholeWordToggle.addEventListener('change', e => matchWholeWord = e.target.checked);
-        
+
+        // Genre filter setup
+        const genreFilterWrapper = modalContainer.querySelector("#genre-filter-wrapper");
+        const genreFilterToggle = modalContainer.querySelector("#genreFilterToggle");
+        const genreMatchModeRadios = modalContainer.querySelectorAll('input[name="genreMatchMode"]');
+        const includeNoGenreToggle = modalContainer.querySelector("#includeNoGenreToggle");
+        const selectGenresBtn = modalContainer.querySelector("#select-genres-btn");
+        const selectedGenresDisplay = modalContainer.querySelector("#selected-genres-display");
+        const selectedGenresTags = modalContainer.querySelector("#selected-genres-tags");
+
+        let selectedGenres = currentFilters.selectedGenres || [];
+        let matchAllGenres = currentFilters.matchAllGenres || false;
+        let includeNoGenreTracks = currentFilters.includeNoGenreTracks || false;
+        let cachedTrackGenreMap = currentFilters.trackGenreMap || null;
+
+        // Convert from serialized array format back to Map if needed
+        if (cachedTrackGenreMap && !(cachedTrackGenreMap instanceof Map) && Array.isArray(cachedTrackGenreMap)) {
+            cachedTrackGenreMap = new Map(cachedTrackGenreMap);
+        }
+
+        let noGenreTracksCount = currentFilters.noGenreTracksCount || 0;
+
+        genreFilterToggle.checked = currentFilters.genreFilterEnabled || false;
+        genreFilterWrapper.classList.toggle('disabled', !genreFilterToggle.checked);
+        genreMatchModeRadios.forEach(radio => radio.checked = (matchAllGenres && radio.value === "all") || (!matchAllGenres && radio.value === "any"));
+        includeNoGenreToggle.checked = includeNoGenreTracks;
+
+        const updateGenreDisplay = () => {
+            if (selectedGenres.length === 0 && !includeNoGenreTracks) {
+                selectedGenresDisplay.textContent = "No genres selected";
+                selectedGenresTags.innerHTML = "";
+            } else {
+                const genreText = selectedGenres.length > 0 ? `${selectedGenres.length} genre${selectedGenres.length !== 1 ? 's' : ''} selected` : "";
+                const noGenreText = includeNoGenreTracks ? `${selectedGenres.length > 0 ? ' + ' : ''}Include no-genre tracks (${noGenreTracksCount})` : "";
+                selectedGenresDisplay.textContent = genreText + noGenreText;
+
+                selectedGenresTags.innerHTML = selectedGenres.map(genre => `
+                    <span style="display: inline-flex; align-items: center; background: #383838; border-radius: 12px; padding: 4px 10px; color: white; font-size: 12px;">
+                        ${genre}
+                        <span style="margin-left: 6px; cursor: pointer; color: #ccc; font-size: 14px;" data-remove-genre="${genre}">×</span>
+                    </span>
+                `).join('');
+            }
+        };
+
+        updateGenreDisplay();
+
+        genreFilterToggle.addEventListener('change', (e) => {
+            genreFilterWrapper.classList.toggle('disabled', !e.target.checked);
+        });
+
+        genreMatchModeRadios.forEach(radio => {
+            radio.addEventListener("change", (e) => {
+                matchAllGenres = e.target.value === "all";
+            });
+        });
+
+        includeNoGenreToggle.addEventListener('change', (e) => {
+            includeNoGenreTracks = e.target.checked;
+            updateGenreDisplay();
+        });
+
+        selectedGenresTags.addEventListener('click', (e) => {
+            const removeGenre = e.target.dataset.removeGenre;
+            if (removeGenre) {
+                selectedGenres = selectedGenres.filter(g => g !== removeGenre);
+                updateGenreDisplay();
+            }
+        });
+
+        selectGenresBtn.addEventListener('click', async () => {
+            if (!sources || sources.length === 0) {
+                Spicetify.showNotification("Please configure sources in the dynamic playlist before selecting genres.", true);
+                return;
+            }
+
+            // Fetch tracks from sources
+            try {
+                const oldButtonText = selectGenresBtn.innerHTML;
+                selectGenresBtn.innerHTML = '<span>Loading...</span>';
+                selectGenresBtn.disabled = true;
+
+                const trackFetchPromises = sources.map(async source => {
+                    const sourceUri = source.uri;
+                    let sourceTracks;
+
+                    if (URI.isPlaylistV1OrV2(sourceUri)) {
+                        sourceTracks = await getPlaylistTracks(sourceUri.split(":")[2]);
+                    } else if (URI.isArtist(sourceUri)) {
+                        sourceTracks = await getArtistTracks(sourceUri, true);
+                    } else if (isLikedSongsPage(sourceUri)) {
+                        sourceTracks = await getLikedSongs();
+                    } else if (URI.isAlbum(sourceUri)) {
+                        sourceTracks = await getAlbumTracks(sourceUri.split(":")[2]);
+                    } else {
+                        return [];
+                    }
+
+                    return sourceTracks || [];
+                });
+
+                const trackArrays = await Promise.all(trackFetchPromises);
+                const allTracks = trackArrays.flat().filter(track => !Spicetify.URI.isLocal(track.uri));
+
+                if (allTracks.length === 0) {
+                    Spicetify.showNotification("No tracks found in sources.", true);
+                    selectGenresBtn.innerHTML = oldButtonText;
+                    selectGenresBtn.disabled = false;
+                    return;
+                }
+
+                const result = await showGenrePickerModal(allTracks, selectedGenres);
+
+                selectGenresBtn.innerHTML = oldButtonText;
+                selectGenresBtn.disabled = false;
+
+                if (result) {
+                    selectedGenres = result.selectedGenres;
+                    cachedTrackGenreMap = result.trackGenreMap;
+                    noGenreTracksCount = result.noGenreTracksCount;
+                    updateGenreDisplay();
+                }
+            } catch (error) {
+                console.error("Error fetching tracks for genre selection:", error);
+                Spicetify.showNotification("Error loading tracks. Please try again.", true);
+                selectGenresBtn.innerHTML = '<span>Select Genres</span>';
+                selectGenresBtn.disabled = false;
+            }
+        });
+
         modalContainer.querySelector('#save-filters').addEventListener('click', () => {
             saveKeywords(titleAlbumKeywords, artistKeywords);
             localStorage.setItem("sort-play-filter-title", filterTitle);
@@ -10455,6 +10656,12 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                 matchWholeWord,
                 titleAlbumKeywords: Array.from(titleAlbumKeywords),
                 artistKeywords: Array.from(artistKeywords),
+                genreFilterEnabled: genreFilterToggle.checked,
+                selectedGenres: selectedGenres,
+                matchAllGenres: matchAllGenres,
+                includeNoGenreTracks: includeNoGenreTracks,
+                trackGenreMap: cachedTrackGenreMap,
+                noGenreTracksCount: noGenreTracksCount
             };
             closeModal(newFilters);
         });
@@ -10960,7 +11167,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
             }
         }
 
-        const savedSortType = localStorage.getItem(STORAGE_KEY_DYNAMIC_SORT_TYPE) || 'playCount';
+        const savedSortType = localStorage.getItem(STORAGE_KEY_DYNAMIC_SORT_TYPE) || 'default';
         const savedSchedule = localStorage.getItem(STORAGE_KEY_DYNAMIC_SCHEDULE) || '86400000';
 
         const sortByParent = buttonStyles.menuItems.find(i => i.sortType === 'sortByParent');
@@ -11101,10 +11308,28 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
               }
               #configure-filters-btn {
                   background-color: #282828;
+                  position: relative;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 8px;
               }
               #configure-filters-btn:hover {
                   background-color: #3e3e3e;
                   border-color: #878787;
+              }
+              #filter-count-badge {
+                  display: none;
+                  background-color: #1ED760;
+                  color: #000;
+                  border-radius: 10px;
+                  padding: 1px 6px;
+                  font-size: 11px;
+                  font-weight: 600;
+                  min-width: 18px;
+                  text-align: center;
+              }
+              #filter-count-badge.active {
+                  display: inline-block;
               }
           </style>
             <div class="job-form-modal">
@@ -11155,7 +11380,10 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                             </div>
                             <div class="setting-row" id="sort-type-row">
                                 <span class="description">Sort Method</span>
-                                <select id="sort-type-select" class="form-select">${sortOptions}</select>
+                                <select id="sort-type-select" class="form-select">
+                                    <option value="default" ${ (isEditing ? jobToEdit.sortType : savedSortType) === 'default' ? 'selected' : ''}>Default Order</option>
+                                    ${sortOptions}
+                                </select>
                             </div>
                             <div class="setting-row" style="align-items: start;">
                                 <span class="description" style="padding-top: 8px;">Update Schedule</span>
@@ -11199,7 +11427,10 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                                         <span class="custom-tooltip">Configure advanced filters for tracks from your sources.</span>
                                     </span>
                                 </span>
-                                <button id="configure-filters-btn" class="main-buttons-button main-button-secondary" style="padding: 6px 25px; border-radius: 20px; border: 1px solid #666; cursor: pointer; color: white; font-weight: 500; font-size: 12px; transition: background-color 0.1s ease, border-color 0.1s ease;">Configure</button>
+                                <button id="configure-filters-btn" class="main-buttons-button main-button-secondary" style="padding: 6px 25px; border-radius: 20px; border: 1px solid #666; cursor: pointer; color: white; font-weight: 500; font-size: 12px; transition: background-color 0.1s ease, border-color 0.1s ease;">
+                                    <span>Configure</span>
+                                    <span id="filter-count-badge"></span>
+                                </button>
                             </div>
                         </div>
                             <div class="card">
@@ -11241,12 +11472,34 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         const limitTracksToggle = modalContainer.querySelector('#limit-tracks-toggle');
         const sourceListContainer = modalContainer.querySelector('#source-list-container');
         const configureFiltersBtn = modalContainer.querySelector('#configure-filters-btn');
-        
+        const filterCountBadge = modalContainer.querySelector('#filter-count-badge');
+
+        const updateFilterBadge = () => {
+            let filterCount = 0;
+            if (jobFilters) {
+                if (jobFilters.excludeLiked) filterCount++;
+                if (jobFilters.excludeListened) filterCount++;
+                if (jobFilters.maxPlayCount && jobFilters.maxPlayCount !== '') filterCount++;
+                if (jobFilters.keywordFilterEnabled && (jobFilters.titleAlbumKeywords?.length > 0 || jobFilters.artistKeywords?.length > 0)) filterCount++;
+                if (jobFilters.genreFilterEnabled && (jobFilters.selectedGenres?.length > 0 || jobFilters.includeNoGenreTracks)) filterCount++;
+            }
+
+            if (filterCount > 0) {
+                filterCountBadge.textContent = filterCount;
+                filterCountBadge.classList.add('active');
+            } else {
+                filterCountBadge.classList.remove('active');
+            }
+        };
+
+        updateFilterBadge();
+
         if (configureFiltersBtn) {
             configureFiltersBtn.addEventListener('click', async () => {
-                const newFilters = await showDynamicFilterModal(jobFilters);
+                const newFilters = await showDynamicFilterModal(jobFilters, sources);
                 if (newFilters) {
                     jobFilters = newFilters;
+                    updateFilterBadge();
                 }
             });
         }
@@ -11901,6 +12154,350 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     "west coast hip hop",
     "worship pop"
   ];
+
+  async function showGenrePickerModal(tracks, currentSelectedGenres = []) {
+    return new Promise(async (resolve) => {
+      try {
+        // Fetch genres for all tracks
+        const result = await processGenreBatches(
+          tracks,
+          (progress) => { mainButton.innerText = `Genres ${progress}%`; }
+        );
+
+        const trackGenreMap = result.trackGenreMap;
+        const allGenres = result.allGenres;
+
+        const genreCounts = new Map();
+        trackGenreMap.forEach(genres => {
+          const uniqueGenreNamesOnTrack = new Set(genres.map(g => g.name));
+          uniqueGenreNamesOnTrack.forEach(name => {
+            genreCounts.set(name, (genreCounts.get(name) || 0) + 1);
+          });
+        });
+
+        // Count tracks without genres
+        const noGenreTracksCount = Array.from(trackGenreMap.values()).filter(g => g.length === 0).length;
+
+        const selectedGenres = new Set(currentSelectedGenres);
+
+        const overlay = document.createElement("div");
+        overlay.id = "genre-picker-overlay";
+        overlay.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background-color: rgba(0, 0, 0, 0.7); z-index: 2008;
+          display: flex; justify-content: center; align-items: center;
+        `;
+
+        const modalContainer = document.createElement("div");
+        modalContainer.className = "sort-play-font-scope";
+        modalContainer.style.cssText = `
+          background-color: #181818; border-radius: 25px; border: 2px solid #282828;
+          width: 620px; max-height: 80vh; display: flex; flex-direction: column;
+        `;
+
+        modalContainer.innerHTML = `
+          <style>
+            #genre-picker-overlay .genre-picker-header {
+              padding: 27px 32px 12px;
+              border-bottom: 1px solid #282828;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            #genre-picker-overlay .genre-picker-title {
+              font-size: 24px;
+              font-weight: 700;
+              color: white;
+            }
+            #genre-picker-overlay .close-btn {
+              background: none;
+              border: none;
+              color: white;
+              cursor: pointer;
+              padding: 4px;
+            }
+            #genre-picker-overlay .genre-picker-content {
+              padding: 16px 32px;
+              overflow-y: auto;
+              flex: 1;
+            }
+            #genre-picker-overlay .search-controls {
+              display: flex;
+              gap: 10px;
+              margin-bottom: 16px;
+              align-items: center;
+            }
+            #genre-picker-overlay .search-bar-container {
+              position: relative;
+              flex: 1;
+            }
+            #genre-picker-overlay .search-bar {
+              width: 100%;
+              padding: 10px 35px 10px 15px;
+              border-radius: 20px;
+              border: 1px solid #282828;
+              background: #282828;
+              color: white;
+            }
+            #genre-picker-overlay .clear-search-button {
+              position: absolute;
+              right: 10px;
+              top: 50%;
+              transform: translateY(-50%);
+              background: none;
+              border: none;
+              color: #b3b3b3;
+              cursor: pointer;
+              font-size: 24px;
+              padding: 0 5px;
+              line-height: 1;
+              display: none;
+            }
+            #genre-picker-overlay .clear-search-button:hover {
+              color: white;
+            }
+            #genre-picker-overlay .select-all-button {
+              padding: 10px 16px;
+              border-radius: 20px;
+              border: none;
+              cursor: pointer;
+              background-color: #282828;
+              color: white;
+              font-weight: 500;
+              font-size: 14px;
+              transition: all 0.4s ease;
+              white-space: nowrap;
+            }
+            #genre-picker-overlay .select-all-button:hover {
+              filter: brightness(1.2);
+            }
+            #genre-picker-overlay .genre-container {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              max-height: 40vh;
+              overflow-y: auto;
+              background-color: #1e1e1e;
+              border-radius: 20px;
+              padding: 15px 10px;
+              scrollbar-width: thin;
+              scrollbar-color: #3b3b3b transparent;
+            }
+            #genre-picker-overlay .genre-button {
+              padding: 6px 7px 6px 16px;
+              border-radius: 20px;
+              border: none;
+              cursor: pointer;
+              background-color: #343434;
+              color: white;
+              font-weight: 500;
+              font-size: 14px;
+              transition: all 0.04s ease;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 8px;
+            }
+            #genre-picker-overlay .genre-button.selected {
+              background-color: #1ED760;
+              color: black;
+            }
+            #genre-picker-overlay .genre-count-badge {
+              background-color: rgba(255, 255, 255, 0.1);
+              color: #e0e0e0;
+              padding: 1px 8px;
+              border-radius: 12px;
+              font-size: 13px;
+              font-weight: 400;
+              min-width: 20px;
+              text-align: center;
+              line-height: 1.5;
+              transition: background-color 0.2s ease, color 0.2s ease;
+            }
+            #genre-picker-overlay .genre-button.selected .genre-count-badge {
+              background-color: rgba(0, 0, 0, 0.2);
+              color: #000;
+            }
+            #genre-picker-overlay .genre-picker-footer {
+              padding: 24px 32px;
+              border-top: 1px solid #282828;
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+            }
+            #genre-picker-overlay .main-button-secondary {
+              padding: 8px 18px;
+              border-radius: 20px;
+              border: none;
+              cursor: pointer;
+              background-color: #333333;
+              color: white;
+              font-weight: 550;
+              font-size: 13px;
+              text-transform: uppercase;
+              transition: background-color 0.1s ease;
+            }
+            #genre-picker-overlay .main-button-secondary:hover {
+              background-color: #444444;
+            }
+            #genre-picker-overlay .main-button-primary {
+              padding: 8px 18px;
+              border-radius: 20px;
+              border: none;
+              cursor: pointer;
+              background-color: #1ED760;
+              color: black;
+              font-weight: 550;
+              font-size: 13px;
+              text-transform: uppercase;
+              transition: background-color 0.1s ease;
+            }
+            #genre-picker-overlay .main-button-primary:hover {
+              background-color: #3BE377;
+            }
+          </style>
+          <div class="genre-picker-header">
+            <h1 class="genre-picker-title">Select Genres</h1>
+            <button class="close-btn" id="close-genre-picker">
+              <svg width="18" height="18" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <path d="M31.098 29.794L16.955 15.65 31.097 1.51 29.683.093 15.54 14.237 1.4.094-.016 1.508 14.126 15.65-.016 29.795l1.414 1.414L15.54 17.065l14.144 14.143" fill="currentColor" fill-rule="evenodd"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="genre-picker-content">
+            <div class="search-controls">
+              <div class="search-bar-container">
+                <input type="text" class="search-bar" placeholder="Search genres...">
+                <button class="clear-search-button">×</button>
+              </div>
+              <button class="select-all-button" id="select-all-genres">Select All</button>
+            </div>
+            <div class="genre-container" id="genre-list"></div>
+          </div>
+          <div class="genre-picker-footer">
+            <button class="main-button-secondary" id="cancel-genre-picker">Cancel</button>
+            <button class="main-button-primary" id="save-genre-picker">Save Selection</button>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+        overlay.appendChild(modalContainer);
+
+        const genreContainer = modalContainer.querySelector("#genre-list");
+        const searchBar = modalContainer.querySelector(".search-bar");
+        const clearSearchButton = modalContainer.querySelector(".clear-search-button");
+        const selectAllButton = modalContainer.querySelector("#select-all-genres");
+
+        const renderGenres = (filter = '') => {
+          const sortedGenres = Array.from(allGenres).sort((a, b) => {
+            const countA = genreCounts.get(a) || 0;
+            const countB = genreCounts.get(b) || 0;
+            return countB - countA;
+          });
+
+          const filteredGenres = filter
+            ? sortedGenres.filter(g => g.toLowerCase().includes(filter.toLowerCase()))
+            : sortedGenres;
+
+          genreContainer.innerHTML = filteredGenres.map(genre => {
+            const count = genreCounts.get(genre) || 0;
+            const isSelected = selectedGenres.has(genre);
+            return `
+              <button class="genre-button ${isSelected ? 'selected' : ''}" data-genre="${genre}">
+                <span>${genre}</span>
+                <span class="genre-count-badge">${count}</span>
+              </button>
+            `;
+          }).join('');
+
+          // Update select all button text
+          const allVisible = filteredGenres.every(g => selectedGenres.has(g));
+          selectAllButton.textContent = allVisible && filteredGenres.length > 0 ? "Deselect All" : "Select All";
+        };
+
+        renderGenres();
+
+        // Genre button click handler
+        genreContainer.addEventListener("click", (e) => {
+          const button = e.target.closest(".genre-button");
+          if (!button) return;
+
+          const genre = button.dataset.genre;
+          if (selectedGenres.has(genre)) {
+            selectedGenres.delete(genre);
+            button.classList.remove("selected");
+          } else {
+            selectedGenres.add(genre);
+            button.classList.add("selected");
+          }
+
+          // Update select all button
+          const allVisible = Array.from(genreContainer.querySelectorAll(".genre-button"))
+            .every(btn => btn.classList.contains("selected"));
+          selectAllButton.textContent = allVisible ? "Deselect All" : "Select All";
+        });
+
+        // Search functionality
+        searchBar.addEventListener("input", (e) => {
+          const filter = e.target.value;
+          clearSearchButton.style.display = filter ? "block" : "none";
+          renderGenres(filter);
+        });
+
+        clearSearchButton.addEventListener("click", () => {
+          searchBar.value = "";
+          clearSearchButton.style.display = "none";
+          renderGenres();
+        });
+
+        // Select all button
+        selectAllButton.addEventListener("click", () => {
+          const visibleButtons = genreContainer.querySelectorAll(".genre-button");
+          const allSelected = Array.from(visibleButtons).every(btn => btn.classList.contains("selected"));
+
+          if (allSelected) {
+            visibleButtons.forEach(btn => {
+              const genre = btn.dataset.genre;
+              selectedGenres.delete(genre);
+              btn.classList.remove("selected");
+            });
+            selectAllButton.textContent = "Select All";
+          } else {
+            visibleButtons.forEach(btn => {
+              const genre = btn.dataset.genre;
+              selectedGenres.add(genre);
+              btn.classList.add("selected");
+            });
+            selectAllButton.textContent = "Deselect All";
+          }
+        });
+
+        // Close handlers
+        const closeModal = (result) => {
+          overlay.remove();
+          resolve(result);
+        };
+
+        modalContainer.querySelector("#close-genre-picker").addEventListener("click", () => closeModal(null));
+        modalContainer.querySelector("#cancel-genre-picker").addEventListener("click", () => closeModal(null));
+        modalContainer.querySelector("#save-genre-picker").addEventListener("click", () => {
+          closeModal({
+            selectedGenres: Array.from(selectedGenres),
+            trackGenreMap: Array.from(trackGenreMap.entries()), // Convert Map to array for serialization
+            noGenreTracksCount: noGenreTracksCount
+          });
+        });
+
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) closeModal(null);
+        });
+
+      } catch (error) {
+        console.error("Error in showGenrePickerModal:", error);
+        resolve(null);
+      }
+    });
+  }
 
   async function showGenreFilterModal(tracks, trackGenreMap) {
     const allGenres = new Set();
