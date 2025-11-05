@@ -65,9 +65,12 @@
   let selectedNowPlayingEnergyFormat = 'percentage';
   let selectedNowPlayingDanceabilityFormat = 'percentage';
   let selectedNowPlayingValenceFormat = 'percentage';
-  let selectedNowPlayingKeyFormat = 'standard';
+  let selectedKeyFormat = 'standard';
   let selectedNowPlayingPopularityFormat = 'raw';
   let selectedNowPlayingSeparator = '•';
+  let showDjInfoKey = true;
+  let showDjInfoTempo = true;
+  let showDjInfoEnergy = true;
   const STORAGE_KEY_CHAT_PANEL_VISIBLE = "sort-play-chat-panel-visible";
   const STORAGE_KEY_LASTFM_USERNAME = "sort-play-lastfm-username";
   const STORAGE_KEY_GENRE_FILTER_SORT = "sort-play-genre-filter-sort";
@@ -110,6 +113,9 @@
   const STORAGE_KEY_NOW_PLAYING_KEY_FORMAT = "sort-play-now-playing-key-format";
   const STORAGE_KEY_NOW_PLAYING_POPULARITY_FORMAT = "sort-play-now-playing-popularity-format";
   const STORAGE_KEY_NOW_PLAYING_SEPARATOR = "sort-play-now-playing-separator";
+  const STORAGE_KEY_DJ_INFO_SHOW_KEY = "sort-play-dj-info-show-key";
+  const STORAGE_KEY_DJ_INFO_SHOW_TEMPO = "sort-play-dj-info-show-tempo";
+  const STORAGE_KEY_DJ_INFO_SHOW_ENERGY = "sort-play-dj-info-show-energy";
   const CACHE_KEY_PERSONAL_SCROBBLES = 'sort-play-personal-scrobbles-cache';
   const CACHE_TIMESTAMP_KEY_PERSONAL_SCROBBLES = 'sort-play-personal-scrobbles-cache-timestamp';
   const CACHE_EXPIRY_HOURS_PERSONAL_SCROBBLES = 4;
@@ -489,9 +495,12 @@
     selectedNowPlayingEnergyFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_ENERGY_FORMAT) || 'percentage';
     selectedNowPlayingDanceabilityFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_DANCEABILITY_FORMAT) || 'percentage';
     selectedNowPlayingValenceFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_VALENCE_FORMAT) || 'percentage';
-    selectedNowPlayingKeyFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_KEY_FORMAT) || 'standard';
+    selectedKeyFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_KEY_FORMAT) || 'standard';
     selectedNowPlayingPopularityFormat = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_POPULARITY_FORMAT) || 'raw';
     selectedNowPlayingSeparator = localStorage.getItem(STORAGE_KEY_NOW_PLAYING_SEPARATOR) || '•';
+    showDjInfoKey = localStorage.getItem(STORAGE_KEY_DJ_INFO_SHOW_KEY) !== 'false';
+    showDjInfoTempo = localStorage.getItem(STORAGE_KEY_DJ_INFO_SHOW_TEMPO) !== 'false';
+    showDjInfoEnergy = localStorage.getItem(STORAGE_KEY_DJ_INFO_SHOW_ENERGY) !== 'false';
 
     for (const sortType in sortOrderState) {
         const storedValue = localStorage.getItem(`sort-play-${sortType}-reverse`);
@@ -547,9 +556,12 @@
     localStorage.setItem(STORAGE_KEY_NOW_PLAYING_ENERGY_FORMAT, selectedNowPlayingEnergyFormat);
     localStorage.setItem(STORAGE_KEY_NOW_PLAYING_DANCEABILITY_FORMAT, selectedNowPlayingDanceabilityFormat);
     localStorage.setItem(STORAGE_KEY_NOW_PLAYING_VALENCE_FORMAT, selectedNowPlayingValenceFormat);
-    localStorage.setItem(STORAGE_KEY_NOW_PLAYING_KEY_FORMAT, selectedNowPlayingKeyFormat);
+    localStorage.setItem(STORAGE_KEY_NOW_PLAYING_KEY_FORMAT, selectedKeyFormat);
     localStorage.setItem(STORAGE_KEY_NOW_PLAYING_POPULARITY_FORMAT, selectedNowPlayingPopularityFormat);
     localStorage.setItem(STORAGE_KEY_NOW_PLAYING_SEPARATOR, selectedNowPlayingSeparator);
+    localStorage.setItem(STORAGE_KEY_DJ_INFO_SHOW_KEY, showDjInfoKey);
+    localStorage.setItem(STORAGE_KEY_DJ_INFO_SHOW_TEMPO, showDjInfoTempo);
+    localStorage.setItem(STORAGE_KEY_DJ_INFO_SHOW_ENERGY, showDjInfoEnergy);
 
     for (const sortType in sortOrderState) {
       localStorage.setItem(`sort-play-${sortType}-reverse`, sortOrderState[sortType]);
@@ -1223,7 +1235,7 @@
       overflow: hidden;
       border: 2px solid #282828;
       background-color: #181818 !important;
-      display: flex; 
+      display: flex;
       flex-direction: column;
     }
     .GenericModal__overlay {
@@ -1235,9 +1247,9 @@
       overflow: hidden;
     }
     .main-trackCreditsModal-mainSection {
-      overflow-y: auto !important; 
+      overflow-y: auto !important;
       padding: 16px 25px 0 25px;
-      flex-grow: 1; 
+      flex-grow: 1;
        scrollbar-width: thin;
        scrollbar-color: #333333 #181818;
     }
@@ -1625,6 +1637,9 @@
             <button id="myScrobblesSettingsBtn" class="column-settings-button" title="My Scrobbles Display Settings" style="display: none;">
                 ${settingsSvg}
             </button>
+            <button id="djInfoSettingsBtn" class="column-settings-button" title="DJ Info Display Settings" style="display: none;">
+                ${settingsSvg}
+            </button>
             <select id="columnTypeSelect" class="column-type-select" ${!showAdditionalColumn ? 'disabled' : ''}>
                 <option value="playCount" ${selectedColumnType === 'playCount' ? 'selected' : ''}>Play Count</option>
                 <option value="popularity" ${selectedColumnType === 'popularity' ? 'selected' : ''}>Popularity</option>
@@ -1657,6 +1672,20 @@
                 <button data-mode="number" class="${myScrobblesDisplayMode === 'number' ? 'selected' : ''}">Number Mode</button>
                 <button data-mode="sign" class="${myScrobblesDisplayMode === 'sign' ? 'selected' : ''}">Sign Mode</button>
             </div>
+            <div id="djInfoDropdownContainer" class="column-settings-dropdown" style="padding: 8px;">
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="djInfoShowKey" ${showDjInfoKey ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Key
+                </label>
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="djInfoShowTempo" ${showDjInfoTempo ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show BPM
+                </label>
+                <label style="display: block; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="djInfoShowEnergy" ${showDjInfoEnergy ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Energy
+                </label>
+            </div>
         </div>
     </div>
     
@@ -1669,6 +1698,9 @@
                 ${settingsSvg}
             </button>
             <button id="secondMyScrobblesSettingsBtn" class="column-settings-button" title="My Scrobbles Display Settings" style="display: none;">
+                ${settingsSvg}
+            </button>
+            <button id="secondDjInfoSettingsBtn" class="column-settings-button" title="DJ Info Display Settings" style="display: none;">
                 ${settingsSvg}
             </button>
             <select id="secondColumnTypeSelect" class="column-type-select" ${!showSecondAdditionalColumn ? 'disabled' : ''}>
@@ -1703,6 +1735,20 @@
                 <button data-mode="number" class="${myScrobblesDisplayMode === 'number' ? 'selected' : ''}">Number Mode</button>
                 <button data-mode="sign" class="${myScrobblesDisplayMode === 'sign' ? 'selected' : ''}">Sign Mode</button>
             </div>
+            <div id="secondDjInfoDropdownContainer" class="column-settings-dropdown" style="padding: 8px;">
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="secondDjInfoShowKey" ${showDjInfoKey ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Key
+                </label>
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="secondDjInfoShowTempo" ${showDjInfoTempo ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show BPM
+                </label>
+                <label style="display: block; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="secondDjInfoShowEnergy" ${showDjInfoEnergy ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Energy
+                </label>
+            </div>
         </div>
     </div>
 
@@ -1715,6 +1761,9 @@
                 ${settingsSvg}
             </button>
             <button id="albumMyScrobblesSettingsBtn" class="column-settings-button" title="My Scrobbles Display Settings" style="display: none;">
+                ${settingsSvg}
+            </button>
+            <button id="albumDjInfoSettingsBtn" class="column-settings-button" title="DJ Info Display Settings" style="display: none;">
                 ${settingsSvg}
             </button>
             <select id="albumColumnTypeSelect" class="column-type-select" ${!showAlbumColumn ? 'disabled' : ''}>
@@ -1748,6 +1797,20 @@
                 <button data-mode="number" class="${myScrobblesDisplayMode === 'number' ? 'selected' : ''}">Number Mode</button>
                 <button data-mode="sign" class="${myScrobblesDisplayMode === 'sign' ? 'selected' : ''}">Sign Mode</button>
             </div>
+            <div id="albumDjInfoDropdownContainer" class="column-settings-dropdown" style="padding: 8px;">
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="albumDjInfoShowKey" ${showDjInfoKey ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Key
+                </label>
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="albumDjInfoShowTempo" ${showDjInfoTempo ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show BPM
+                </label>
+                <label style="display: block; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="albumDjInfoShowEnergy" ${showDjInfoEnergy ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Energy
+                </label>
+            </div>
         </div>
     </div>
 
@@ -1760,6 +1823,9 @@
                 ${settingsSvg}
             </button>
             <button id="artistMyScrobblesSettingsBtn" class="column-settings-button" title="My Scrobbles Display Settings" style="display: none;">
+                ${settingsSvg}
+            </button>
+            <button id="artistDjInfoSettingsBtn" class="column-settings-button" title="DJ Info Display Settings" style="display: none;">
                 ${settingsSvg}
             </button>
             <select id="artistColumnTypeSelect" class="column-type-select" ${!showArtistColumn ? 'disabled' : ''}>
@@ -1793,9 +1859,23 @@
                 <button data-mode="number" class="${myScrobblesDisplayMode === 'number' ? 'selected' : ''}">Number Mode</button>
                 <button data-mode="sign" class="${myScrobblesDisplayMode === 'sign' ? 'selected' : ''}">Sign Mode</button>
             </div>
+            <div id="artistDjInfoDropdownContainer" class="column-settings-dropdown" style="padding: 8px;">
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="artistDjInfoShowKey" ${showDjInfoKey ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Key
+                </label>
+                <label style="display: block; margin-bottom: 6px; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="artistDjInfoShowTempo" ${showDjInfoTempo ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show BPM
+                </label>
+                <label style="display: block; cursor: pointer; color: #fff;">
+                    <input type="checkbox" id="artistDjInfoShowEnergy" ${showDjInfoEnergy ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                    Show Energy
+                </label>
+            </div>
         </div>
     </div>
-    
+
     <div class="setting-row" id="removeDateAdded">
         <label class="col description">Remove Playlist "Date Added" Column</label>
         <div class="col action">
@@ -1853,6 +1933,24 @@
                 <input type="checkbox" id="showNowPlayingDataToggle" ${showNowPlayingData ? 'checked' : ''}>
                 <span class="sliderx"></span>
             </label>
+        </div>
+    </div>
+
+    <div class="setting-row" id="keyFormatSetting">
+        <label class="col description">
+            Key Display Format
+            <span class="tooltip-container">
+                <span style="color: #888; margin-left: 4px; font-size: 12px; cursor: help;">?</span>
+                <span class="custom-tooltip">Controls how musical keys are displayed in columns and Now Playing data.</span>
+            </span>
+        </label>
+        <div class="col action">
+            <select id="keyFormatSelect" style="max-width: 180px;">
+                <option value="standard" ${selectedKeyFormat === 'standard' ? 'selected' : ''}>Standard (e.g., C♯/D♭)</option>
+                <option value="full_name" ${selectedKeyFormat === 'full_name' ? 'selected' : ''}>Full Name (e.g., C♯ Minor)</option>
+                <option value="camelot" ${selectedKeyFormat === 'camelot' ? 'selected' : ''}>Camelot (e.g., 12A)</option>
+                <option value="openkey" ${selectedKeyFormat === 'openkey' ? 'selected' : ''}>Open Key (e.g., 5m)</option>
+            </select>
         </div>
     </div>
 
@@ -2102,6 +2200,14 @@
     const albumMyScrobblesDropdownContainer = modalContainer.querySelector("#albumMyScrobblesDropdownContainer");
     const artistDateFormatDropdownContainer = modalContainer.querySelector("#artistDateFormatDropdownContainer");
     const artistMyScrobblesDropdownContainer = modalContainer.querySelector("#artistMyScrobblesDropdownContainer");
+    const djInfoSettingsBtn = modalContainer.querySelector("#djInfoSettingsBtn");
+    const secondDjInfoSettingsBtn = modalContainer.querySelector("#secondDjInfoSettingsBtn");
+    const albumDjInfoSettingsBtn = modalContainer.querySelector("#albumDjInfoSettingsBtn");
+    const artistDjInfoSettingsBtn = modalContainer.querySelector("#artistDjInfoSettingsBtn");
+    const djInfoDropdownContainer = modalContainer.querySelector("#djInfoDropdownContainer");
+    const secondDjInfoDropdownContainer = modalContainer.querySelector("#secondDjInfoDropdownContainer");
+    const albumDjInfoDropdownContainer = modalContainer.querySelector("#albumDjInfoDropdownContainer");
+    const artistDjInfoDropdownContainer = modalContainer.querySelector("#artistDjInfoDropdownContainer");
     const removeDateAddedToggle = modalContainer.querySelector("#removeDateAdded input");
     const playlistDeduplicateToggle = modalContainer.querySelector("#playlistDeduplicate input");
     const showRemovedDuplicatesToggle = modalContainer.querySelector("#showRemovedDuplicates input");
@@ -2139,6 +2245,7 @@
     const showNowPlayingDataToggle = modalContainer.querySelector("#showNowPlayingDataToggle");
     const nowPlayingDataTypeSelect = modalContainer.querySelector("#nowPlayingDataTypeSelect");
     const nowPlayingSettingsBtn = modalContainer.querySelector("#nowPlayingSettingsBtn");
+    const keyFormatSelect = modalContainer.querySelector("#keyFormatSelect");
 
     showLikeButtonToggle.addEventListener("change", () => {
         showLikeButton = showLikeButtonToggle.checked;
@@ -2262,6 +2369,13 @@
     colorSortModeSelect.addEventListener("change", () => {
         colorSortMode = colorSortModeSelect.value;
         saveSettings();
+    });
+
+    keyFormatSelect.addEventListener("change", () => {
+        selectedKeyFormat = keyFormatSelect.value;
+        saveSettings();
+        updateTracklist();
+        displayNowPlayingData();
     });
 
     topTracksLimitSelect.value = topTracksLimit;
@@ -2419,6 +2533,10 @@
         myScrobblesSettingsBtn.style.display = showScrobbleSettings ? 'flex' : 'none';
         myScrobblesSettingsBtn.disabled = !showScrobbleSettings;
         if (!showScrobbleSettings) myScrobblesDropdownContainer.style.display = 'none';
+        const showDjInfoSettings = showAdditionalColumn && selectedColumnType === 'djInfo';
+        djInfoSettingsBtn.style.display = showDjInfoSettings ? 'flex' : 'none';
+        djInfoSettingsBtn.disabled = !showDjInfoSettings;
+        if (!showDjInfoSettings) djInfoDropdownContainer.style.display = 'none';
     };
 
     const updateSecondPlaylistColumnSettingsVisibility = () => {
@@ -2430,6 +2548,10 @@
         secondMyScrobblesSettingsBtn.style.display = showScrobbleSettings ? 'flex' : 'none';
         secondMyScrobblesSettingsBtn.disabled = !showScrobbleSettings;
         if (!showScrobbleSettings) secondMyScrobblesDropdownContainer.style.display = 'none';
+        const showDjInfoSettings = showSecondAdditionalColumn && selectedSecondColumnType === 'djInfo';
+        secondDjInfoSettingsBtn.style.display = showDjInfoSettings ? 'flex' : 'none';
+        secondDjInfoSettingsBtn.disabled = !showDjInfoSettings;
+        if (!showDjInfoSettings) secondDjInfoDropdownContainer.style.display = 'none';
     };
 
     const updateAlbumColumnSettingsVisibility = () => {
@@ -2441,6 +2563,10 @@
         albumMyScrobblesSettingsBtn.style.display = showScrobbleSettings ? 'flex' : 'none';
         albumMyScrobblesSettingsBtn.disabled = !showScrobbleSettings;
         if (!showScrobbleSettings) albumMyScrobblesDropdownContainer.style.display = 'none';
+        const showDjInfoSettings = showAlbumColumn && selectedAlbumColumnType === 'djInfo';
+        albumDjInfoSettingsBtn.style.display = showDjInfoSettings ? 'flex' : 'none';
+        albumDjInfoSettingsBtn.disabled = !showDjInfoSettings;
+        if (!showDjInfoSettings) albumDjInfoDropdownContainer.style.display = 'none';
     };
 
     const updateArtistColumnSettingsVisibility = () => {
@@ -2452,6 +2578,10 @@
         artistMyScrobblesSettingsBtn.style.display = showScrobbleSettings ? 'flex' : 'none';
         artistMyScrobblesSettingsBtn.disabled = !showScrobbleSettings;
         if (!showScrobbleSettings) artistMyScrobblesDropdownContainer.style.display = 'none';
+        const showDjInfoSettings = showArtistColumn && selectedArtistColumnType === 'djInfo';
+        artistDjInfoSettingsBtn.style.display = showDjInfoSettings ? 'flex' : 'none';
+        artistDjInfoSettingsBtn.disabled = !showDjInfoSettings;
+        if (!showDjInfoSettings) artistDjInfoDropdownContainer.style.display = 'none';
     };
 
     updatePlaylistColumnSettingsVisibility();
@@ -2651,7 +2781,8 @@
         });
     };
 
-    const allDropdowns = [...allDateFormatContainers, ...allScrobbleContainers];
+    const allDjInfoContainers = [djInfoDropdownContainer, secondDjInfoDropdownContainer, albumDjInfoDropdownContainer, artistDjInfoDropdownContainer];
+    const allDropdowns = [...allDateFormatContainers, ...allScrobbleContainers, ...allDjInfoContainers];
     setupSettingsButtonToggle(dateFormatSettingsBtn, dateFormatDropdownContainer, allDropdowns.filter(d => d !== dateFormatDropdownContainer));
     setupSettingsButtonToggle(myScrobblesSettingsBtn, myScrobblesDropdownContainer, allDropdowns.filter(d => d !== myScrobblesDropdownContainer));
     setupSettingsButtonToggle(albumDateFormatSettingsBtn, albumDateFormatDropdownContainer, allDropdowns.filter(d => d !== albumDateFormatDropdownContainer));
@@ -2660,6 +2791,37 @@
     setupSettingsButtonToggle(artistMyScrobblesSettingsBtn, artistMyScrobblesDropdownContainer, allDropdowns.filter(d => d !== artistMyScrobblesDropdownContainer));
     setupSettingsButtonToggle(secondDateFormatSettingsBtn, secondDateFormatDropdownContainer, allDropdowns.filter(d => d !== secondDateFormatDropdownContainer));
     setupSettingsButtonToggle(secondMyScrobblesSettingsBtn, secondMyScrobblesDropdownContainer, allDropdowns.filter(d => d !== secondMyScrobblesDropdownContainer));
+    setupSettingsButtonToggle(djInfoSettingsBtn, djInfoDropdownContainer, allDropdowns.filter(d => d !== djInfoDropdownContainer));
+    setupSettingsButtonToggle(secondDjInfoSettingsBtn, secondDjInfoDropdownContainer, allDropdowns.filter(d => d !== secondDjInfoDropdownContainer));
+    setupSettingsButtonToggle(albumDjInfoSettingsBtn, albumDjInfoDropdownContainer, allDropdowns.filter(d => d !== albumDjInfoDropdownContainer));
+    setupSettingsButtonToggle(artistDjInfoSettingsBtn, artistDjInfoDropdownContainer, allDropdowns.filter(d => d !== artistDjInfoDropdownContainer));
+
+    allDjInfoContainers.forEach(container => {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const id = checkbox.id;
+                if (id.includes('ShowKey')) {
+                    showDjInfoKey = checkbox.checked;
+                } else if (id.includes('ShowTempo')) {
+                    showDjInfoTempo = checkbox.checked;
+                } else if (id.includes('ShowEnergy')) {
+                    showDjInfoEnergy = checkbox.checked;
+                }
+
+                allDjInfoContainers.forEach(c => {
+                    if (id.includes('ShowKey')) c.querySelector('input[id$="ShowKey"]').checked = showDjInfoKey;
+                    if (id.includes('ShowTempo')) c.querySelector('input[id$="ShowTempo"]').checked = showDjInfoTempo;
+                    if (id.includes('ShowEnergy')) c.querySelector('input[id$="ShowEnergy"]').checked = showDjInfoEnergy;
+                });
+
+                saveSettings();
+                updateTracklist();
+                onPageChange();
+            });
+        });
+    });
 
     document.addEventListener('click', (event) => {
         allDropdowns.forEach(d => d.style.display = 'none');
@@ -2933,17 +3095,6 @@
                               </select>
                           </div>
                       </div>
-                      <div id="np-key-settings">
-                          <div class="np-setting-row">
-                              <label for="npKeyFormatSelect">Key Style</label>
-                              <select id="npKeyFormatSelect">
-                                  <option value="standard">Standard (e.g., C\u266F/D\u266D)</option>
-                                  <option value="full_name">Full Name (e.g., C\u266F Minor)</option>
-                                  <option value="camelot">Camelot (e.g., 12A)</option>
-                                  <option value="openkey">Open Key (e.g., 5m)</option>
-                              </select>
-                          </div>
-                      </div>
                   </div>
               </div>
               <div class="np-settings-card">
@@ -2998,8 +3149,6 @@
     const danceabilityFormatSelect = modalContainer.querySelector("#npDanceabilityFormatSelect");
     const valenceSettings = modalContainer.querySelector("#np-valence-settings");
     const valenceFormatSelect = modalContainer.querySelector("#npValenceFormatSelect");
-    const keySettings = modalContainer.querySelector("#np-key-settings");
-    const keyFormatSelect = modalContainer.querySelector("#npKeyFormatSelect");
     const separatorTrigger = modalContainer.querySelector("#npSeparatorTrigger");
     const separatorDisplay = modalContainer.querySelector("#npSeparatorDisplay");
     const separatorDropdown = modalContainer.querySelector("#npSeparatorDropdown");
@@ -3069,7 +3218,6 @@
         energySettings.style.display = selectedType === 'energy' ? 'block' : 'none';
         danceabilitySettings.style.display = selectedType === 'danceability' ? 'block' : 'none';
         valenceSettings.style.display = selectedType === 'valence' ? 'block' : 'none';
-        keySettings.style.display = selectedType === 'key' ? 'block' : 'none';
     }
 
     dataTypeSelect.addEventListener("change", () => {
@@ -3132,13 +3280,6 @@
     valenceFormatSelect.value = selectedNowPlayingValenceFormat;
     valenceFormatSelect.addEventListener("change", () => {
         selectedNowPlayingValenceFormat = valenceFormatSelect.value;
-        saveSettings();
-        displayNowPlayingData();
-    });
-
-    keyFormatSelect.value = selectedNowPlayingKeyFormat;
-    keyFormatSelect.addEventListener("change", () => {
-        selectedNowPlayingKeyFormat = keyFormatSelect.value;
         saveSettings();
         displayNowPlayingData();
     });
@@ -4095,7 +4236,7 @@
                                 dataValue = formatAudioFeature(value, selectedNowPlayingValenceFormat, 'Valence');
                                 break;
                             case 'key':
-                                dataValue = formatKey(stats.key_raw, stats.mode, selectedNowPlayingKeyFormat);
+                                dataValue = formatKey(stats.key_raw, stats.mode, selectedKeyFormat);
                                 break;
                             default:
                                 dataValue = String(value);
@@ -21417,7 +21558,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                     columnConfigs.forEach(config => {
                         const dataElement = trackElement.querySelector(config.dataSelector);
                         if (dataElement && audioFeatureTypes.includes(config.type)) {
-                            const value = config.type === 'djInfo' ? cachedData : cachedData[config.type];
+                            const value = (config.type === 'djInfo' || config.type === 'key') ? cachedData : cachedData[config.type];
                             updateDisplay(dataElement, value, config.type);
                         }
                     });
@@ -21440,7 +21581,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                         columnConfigs.forEach(config => {
                             if (audioFeatureTypes.includes(config.type)) {
                                 const dataElement = trackElement.querySelector(config.dataSelector);
-                                const value = config.type === 'djInfo' ? stats : stats[config.type];
+                                const value = (config.type === 'djInfo' || config.type === 'key') ? stats : stats[config.type];
                                 updateDisplay(dataElement, value, config.type);
                             }
                         });
@@ -21623,14 +21764,25 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     } else if (type === 'djInfo') {
         if (value && typeof value === 'object') {
             const parts = [];
-            if (value.key && value.key !== 'Undefined') parts.push(value.key);
-            if (value.tempo) parts.push(`${value.tempo}♫`);
-            if (value.energy) parts.push(`E${value.energy}`);
+            if (showDjInfoKey && value.key_raw !== null && value.key_raw !== undefined && value.key_raw !== -1) {
+                const formattedKey = formatKey(value.key_raw, value.mode, selectedKeyFormat);
+                parts.push(formattedKey);
+            }
+            if (showDjInfoTempo && value.tempo) {
+                parts.push(`${value.tempo} BPM`);
+            }
+            if (showDjInfoEnergy && value.energy) {
+                parts.push(`E${value.energy}`);
+            }
             if (parts.length > 0) {
                 displayValue = parts.join(' | ');
             }
         }
-    } else if (['key', 'tempo', 'energy', 'danceability', 'valence', 'popularity'].includes(type)) {
+    } else if (type === 'key') {
+        if (value && typeof value === 'object' && value.key_raw !== null && value.key_raw !== undefined && value.key_raw !== -1) {
+            displayValue = formatKey(value.key_raw, value.mode, selectedKeyFormat);
+        }
+    } else if (['tempo', 'energy', 'danceability', 'valence', 'popularity'].includes(type)) {
         if (value !== null && value !== undefined) {
             displayValue = String(value);
         }
@@ -21640,6 +21792,9 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     element.style.fontSize = "14px";
     element.style.fontWeight = "400";
     element.style.color = "var(--spice-subtext)";
+    if (type === 'djInfo') {
+        element.style.textAlign = "center";
+    }
   }
 
 
