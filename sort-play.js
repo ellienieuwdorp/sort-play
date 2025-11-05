@@ -12042,6 +12042,25 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     .genre-filter-modal .create-playlist-button:hover {
       background-color: #3BE377;
     }
+    .genre-filter-modal .export-no-genre-button {
+      padding: 8px 18px;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      background-color: #282828;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.04s ease;
+      margin-top: 10px;
+    }
+    .genre-filter-modal .export-no-genre-button:hover {
+      background-color: #3b3b3b;
+    }
+    .genre-filter-modal .export-no-genre-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     .genre-filter-modal .genre-container {
       display: flex;
       flex-wrap: wrap;
@@ -12303,6 +12322,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         <div class="genre-stats">
             <span id="total-tracks-stat">Total tracks: 0</span>
             <span id="filtered-tracks-stat">Filtered tracks: 0</span>
+            <span id="no-genre-tracks-stat">No genre: 0</span>
         </div>
         <div class="settings-container">
             <div class="settings-right-wrapper">
@@ -12339,6 +12359,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
             </div>
         </div>
         <button class="create-playlist-button">Create Playlist</button>
+        <button class="export-no-genre-button">Export No-Genre Tracks</button>
     </div>
   `;
 
@@ -12385,6 +12406,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
 
     const totalTracksStat = modalContainer.querySelector("#total-tracks-stat");
     const filteredTracksStat = modalContainer.querySelector("#filtered-tracks-stat");
+    const noGenreTracksStat = modalContainer.querySelector("#no-genre-tracks-stat");
 
     const lastSelectedSort = localStorage.getItem(STORAGE_KEY_GENRE_FILTER_SORT) || "default";
     sortTypeSelect.value = lastSelectedSort;
@@ -12406,8 +12428,10 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         tracksWithGenresCount++;
       }
     });
+    const noGenreTracksCount = tracks.length - tracksWithGenresCount;
     totalTracksStat.textContent = `Total tracks: ${tracksWithGenresCount} (${tracks.length})`;
     filteredTracksStat.textContent = `Filtered tracks: 0`;
+    noGenreTracksStat.textContent = `No genre: ${noGenreTracksCount}`;
 
     function updateFilteredTracksCount() {
       const filteredTracks = filterTracksByGenres(
@@ -12795,6 +12819,155 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
               Spicetify.showNotification(error.message);
               return;
           }
+      }
+    });
+
+    const exportNoGenreButton = modalContainer.querySelector(".export-no-genre-button");
+
+    if (noGenreTracksCount === 0) {
+      exportNoGenreButton.disabled = true;
+      exportNoGenreButton.title = "No tracks without genres found";
+    }
+
+    exportNoGenreButton.addEventListener("click", async () => {
+      const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
+
+      if (noGenreTracks.length === 0) {
+        Spicetify.showNotification("No tracks without genres found.");
+        return;
+      }
+
+      const sortType = sortTypeSelect.value;
+      Spicetify.PopupModal.hide();
+
+      const sourceUri = getCurrentUri();
+      let sourceName;
+      if (URI.isArtist(sourceUri)) {
+        sourceName = await Spicetify.CosmosAsync.get(
+          `https://api.spotify.com/v1/artists/${sourceUri.split(":")[2]}`
+        ).then((r) => r.name);
+      } else if (isLikedSongsPage(sourceUri)) {
+        sourceName = "Liked Songs";
+      } else if (URI.isAlbum(sourceUri)) {
+        sourceName = await Spicetify.CosmosAsync.get(
+          `https://api.spotify.com/v1/albums/${sourceUri.split(":")[2]}`
+        ).then((r) => r.name);
+      } else {
+        sourceName = await Spicetify.CosmosAsync.get(
+          `https://api.spotify.com/v1/playlists/${sourceUri.split(":")[2]}`
+        ).then((r) => r.name);
+      }
+
+      const playlistName = `${sourceName} (No Genre)`;
+      const playlistDescription = `Tracks from ${sourceName} with no genre data - Created with Sort-Play`;
+
+      async function createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription) {
+        try {
+          mainButton.innerText = "Creating...";
+          const newPlaylist = await createPlaylist(playlistName, playlistDescription);
+          await new Promise(resolve => setTimeout(resolve, 1250));
+          mainButton.innerText = "Saving...";
+
+          const trackUris = sortedTracks.map((track) => track.uri);
+          await addTracksToPlaylist(newPlaylist.id, trackUris);
+          await addPlaylistToLibrary(newPlaylist.uri);
+
+          Spicetify.showNotification(`Playlist created with ${noGenreTracks.length} tracks without genre data!`);
+          await navigateToPlaylist(newPlaylist);
+        } catch (error) {
+          console.error("Error creating or updating playlist:", error);
+          Spicetify.showNotification(`An error occurred while creating the playlist. Please check your internet connection and try again.`);
+        } finally {
+          resetButtons();
+        }
+      }
+
+      let sortedTracks;
+
+      if (sortType === "default") {
+        sortedTracks = noGenreTracks;
+        setButtonProcessing(true);
+        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
+        mainButton.style.color = buttonStyles.main.disabledColor;
+        mainButton.style.cursor = "default";
+        svgElement.style.fill = buttonStyles.main.disabledColor;
+        menuButtons.forEach((button) => (button.disabled = true));
+        mainButton.innerHTML = "100%";
+        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
+      } else if (sortType === "shuffle") {
+        setButtonProcessing(true);
+        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
+        mainButton.style.color = buttonStyles.main.disabledColor;
+        mainButton.style.cursor = "default";
+        svgElement.style.fill = buttonStyles.main.disabledColor;
+        menuButtons.forEach((button) => (button.disabled = true));
+        mainButton.innerHTML = "100%";
+        sortedTracks = [...noGenreTracks];
+        simpleShuffle(sortedTracks);
+        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
+      } else if (sortType === "playCount" || sortType === "popularity" || sortType === "releaseDate") {
+        setButtonProcessing(true);
+        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
+        mainButton.style.color = buttonStyles.main.disabledColor;
+        mainButton.style.cursor = "default";
+        svgElement.style.fill = buttonStyles.main.disabledColor;
+        menuButtons.forEach((button) => (button.disabled = true));
+        mainButton.innerHTML = "0%";
+
+        const tracksWithPlayCounts = await enrichTracksWithPlayCounts(
+          noGenreTracks,
+          (progress) => {
+            mainButton.innerText = `${Math.floor(progress * 0.90)}%`;
+          }
+        );
+
+        if (sortType === "playCount") {
+          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
+            const playCountA = parseInt(a.playCount) || 0;
+            const playCountB = parseInt(b.playCount) || 0;
+            return playCountB - playCountA;
+          });
+        } else if (sortType === "popularity") {
+          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
+            const popA = parseInt(a.popularity) || 0;
+            const popB = parseInt(b.popularity) || 0;
+            return popB - popA;
+          });
+        } else if (sortType === "releaseDate") {
+          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
+            const dateA = new Date(a.releaseDate || 0);
+            const dateB = new Date(b.releaseDate || 0);
+            return dateB - dateA;
+          });
+        }
+
+        mainButton.innerText = "100%";
+        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
+      } else if (sortType === "scrobbles" || sortType === "personalScrobbles") {
+        try {
+          setButtonProcessing(true);
+          mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
+          mainButton.style.color = buttonStyles.main.disabledColor;
+          mainButton.style.cursor = "default";
+          svgElement.style.fill = buttonStyles.main.disabledColor;
+          menuButtons.forEach((button) => (button.disabled = true));
+          mainButton.innerHTML = "0%";
+
+          const result = await handleScrobblesSorting(
+            noGenreTracks,
+            sortType,
+            (progress) => {
+              mainButton.innerText = `${Math.floor(progress * 0.90)}%`;
+            }
+          );
+          sortedTracks = result.sortedTracks;
+          mainButton.innerText = "100%";
+          await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
+        } catch (error) {
+          resetButtons();
+          Spicetify.showNotification(error.message);
+          return;
+        }
       }
     });
   }
@@ -13315,6 +13488,13 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         );
       });
     }
+  }
+
+  function getTracksWithoutGenres(tracks, trackGenreMap) {
+    return tracks.filter((track) => {
+      const trackGenres = trackGenreMap.get(track.uri);
+      return !trackGenres || trackGenres.length === 0;
+    });
   }
 
   const styleElement = document.createElement("style");
