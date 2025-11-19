@@ -12967,8 +12967,9 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
       flex: 1;
       background-color: #282828;
       border-radius: 20px;
-      padding: 25px;
-      height: 110px;
+      padding: 20px 18px;
+      height: auto;
+      min-height: 110px;
     }
     .genre-filter-modal .settings-right-wrapper {
       display: flex;
@@ -12991,13 +12992,14 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
       justify-content: space-between;
       align-items: center;
       padding: 5px 0;
-      width: auto; 
+      width: auto;
+      gap: 8px;
     }
     .genre-filter-modal .setting-row .description {
       color: white;
       width: auto;
       flex-grow: 1; 
-      font-size: 15px;
+      font-size: 14px;
     }
     .genre-filter-modal .setting-row .action {
       flex-shrink: 0;
@@ -13106,6 +13108,21 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                         </label>
                     </div>
                 </div>
+                <div class="setting-row">
+                    <label class="description" for="includeNoGenreToggle">
+                        Include No-Genre Tracks
+                        <span class="tooltip-container">
+                            <span style="color: #888; margin-left: 4px; font-size: 12px; cursor: help;">?</span>
+                            <span class="custom-tooltip">Include tracks that have no genre data.</span>
+                        </span>
+                    </label>
+                    <div class="action">
+                        <label class="switch">
+                            <input type="checkbox" id="includeNoGenreToggle">
+                            <span class="sliderx"></span>
+                        </label>
+                    </div>
+                </div>
             </div>
             <div class="settings-left-wrapper">
                 <div class="settings-title">Sort Type:</div>
@@ -13124,7 +13141,6 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         </div>
         <div id="genre-selection-error" style="color: #f15e6c; font-size: 13px; text-align: center; display: none;"></div>
         <button class="create-playlist-button">Create Playlist</button>
-        <button class="export-no-genre-button">Export No-Genre Tracks</button>
     </div>
   `;
 
@@ -13162,6 +13178,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     preventDragCloseModal();
 
     const matchAllGenresToggle = modalContainer.querySelector("#matchAllGenresToggle");
+    const includeNoGenreToggle = modalContainer.querySelector("#includeNoGenreToggle");
     const genreContainer = modalContainer.querySelector(".genre-container");
     const searchBar = modalContainer.querySelector(".search-bar");
     const clearSearchButton = modalContainer.querySelector(".clear-search-button");
@@ -13181,9 +13198,16 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
       localStorage.setItem(STORAGE_KEY_GENRE_FILTER_SORT, sortTypeSelect.value);
     });
 
+    let includeNoGenreTracks = false;
+
     matchAllGenresToggle.addEventListener("change", () => {
       matchAllGenres = matchAllGenresToggle.checked;
       saveSettings();
+      updateFilteredTracksCount();
+    });
+
+    includeNoGenreToggle.addEventListener("change", () => {
+      includeNoGenreTracks = includeNoGenreToggle.checked;
       updateFilteredTracksCount();
     });
     
@@ -13201,12 +13225,24 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     noGenreTracksStat.textContent = `No genre: ${noGenreTracksCount}`;
 
     function updateFilteredTracksCount() {
-      const filteredTracks = filterTracksByGenres(
+      let filteredTracks = filterTracksByGenres(
         tracks,
         selectedGenres,
         excludedGenres,
         trackGenreMap  
       );
+
+      const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
+      const noGenreUris = new Set(noGenreTracks.map(t => t.uri));
+
+      if (includeNoGenreTracks) {
+          const currentUris = new Set(filteredTracks.map(t => t.uri));
+          const missing = noGenreTracks.filter(t => !currentUris.has(t.uri));
+          filteredTracks = filteredTracks.concat(missing);
+      } else {
+          filteredTracks = filteredTracks.filter(t => !noGenreUris.has(t.uri));
+      }
+
       filteredTracksStat.textContent = `Filtered tracks: ${filteredTracks.length}`;
 
       const relatedGenres = new Set();
@@ -13410,21 +13446,32 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
 
     createPlaylistButton.addEventListener("click", async () => {
       selectionErrorDiv.style.display = 'none';
-      if (selectedGenres.length === 0 && excludedGenres.length === 0) {
-          selectionErrorDiv.textContent = "Please select at least one genre to include or exclude.";
+      if (selectedGenres.length === 0 && excludedGenres.length === 0 && !includeNoGenreTracks) {
+          selectionErrorDiv.textContent = "Please select at least one genre to include or exclude, or enable 'Include No-Genre Tracks'.";
           selectionErrorDiv.style.display = 'block';
           return;
       }
     
-      const filteredTracks = filterTracksByGenres(
+      let filteredTracks = filterTracksByGenres(
           tracks,
           selectedGenres,
           excludedGenres,
           trackGenreMap
       );
+
+      const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
+      const noGenreUris = new Set(noGenreTracks.map(t => t.uri));
+
+      if (includeNoGenreTracks) {
+          const currentUris = new Set(filteredTracks.map(t => t.uri));
+          const missing = noGenreTracks.filter(t => !currentUris.has(t.uri));
+          filteredTracks = filteredTracks.concat(missing);
+      } else {
+          filteredTracks = filteredTracks.filter(t => !noGenreUris.has(t.uri));
+      }
     
       if (filteredTracks.length === 0) {
-          Spicetify.showNotification("No tracks found for the selected genres.");
+          Spicetify.showNotification("No tracks found for the selected criteria.");
           return;
       }
     
@@ -13654,154 +13701,6 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
       }
     });
 
-    const exportNoGenreButton = modalContainer.querySelector(".export-no-genre-button");
-
-    if (noGenreTracksCount === 0) {
-      exportNoGenreButton.disabled = true;
-      exportNoGenreButton.title = "No tracks without genres found";
-    }
-
-    exportNoGenreButton.addEventListener("click", async () => {
-      const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
-
-      if (noGenreTracks.length === 0) {
-        Spicetify.showNotification("No tracks without genres found.");
-        return;
-      }
-
-      const sortType = sortTypeSelect.value;
-      Spicetify.PopupModal.hide();
-
-      const sourceUri = getCurrentUri();
-      let sourceName;
-      if (URI.isArtist(sourceUri)) {
-        sourceName = await Spicetify.CosmosAsync.get(
-          `https://api.spotify.com/v1/artists/${sourceUri.split(":")[2]}`
-        ).then((r) => r.name);
-      } else if (isLikedSongsPage(sourceUri)) {
-        sourceName = "Liked Songs";
-      } else if (URI.isAlbum(sourceUri)) {
-        sourceName = await Spicetify.CosmosAsync.get(
-          `https://api.spotify.com/v1/albums/${sourceUri.split(":")[2]}`
-        ).then((r) => r.name);
-      } else {
-        sourceName = await Spicetify.CosmosAsync.get(
-          `https://api.spotify.com/v1/playlists/${sourceUri.split(":")[2]}`
-        ).then((r) => r.name);
-      }
-
-      const playlistName = `${sourceName} (No Genre)`;
-      const playlistDescription = `Tracks from ${sourceName} with no genre data - Created with Sort-Play`;
-
-      async function createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription) {
-        try {
-          mainButton.innerText = "Creating...";
-          const newPlaylist = await createPlaylist(playlistName, playlistDescription);
-          await new Promise(resolve => setTimeout(resolve, 1250));
-          mainButton.innerText = "Saving...";
-
-          const trackUris = sortedTracks.map((track) => track.uri);
-          await addTracksToPlaylist(newPlaylist.id, trackUris);
-          await addPlaylistToLibrary(newPlaylist.uri);
-
-          Spicetify.showNotification(`Playlist created with ${noGenreTracks.length} tracks without genre data!`);
-          await navigateToPlaylist(newPlaylist);
-        } catch (error) {
-          console.error("Error creating or updating playlist:", error);
-          Spicetify.showNotification(`An error occurred while creating the playlist. Please check your internet connection and try again.`);
-        } finally {
-          resetButtons();
-        }
-      }
-
-      let sortedTracks;
-
-      if (sortType === "default") {
-        sortedTracks = noGenreTracks;
-        setButtonProcessing(true);
-        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
-        mainButton.style.color = buttonStyles.main.disabledColor;
-        mainButton.style.cursor = "default";
-        svgElement.style.fill = buttonStyles.main.disabledColor;
-        menuButtons.forEach((button) => (button.disabled = true));
-        mainButton.innerHTML = "100%";
-        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
-      } else if (sortType === "shuffle") {
-        setButtonProcessing(true);
-        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
-        mainButton.style.color = buttonStyles.main.disabledColor;
-        mainButton.style.cursor = "default";
-        svgElement.style.fill = buttonStyles.main.disabledColor;
-        menuButtons.forEach((button) => (button.disabled = true));
-        mainButton.innerHTML = "100%";
-        sortedTracks = [...noGenreTracks];
-        simpleShuffle(sortedTracks);
-        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
-      } else if (sortType === "playCount" || sortType === "popularity" || sortType === "releaseDate") {
-        setButtonProcessing(true);
-        mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
-        mainButton.style.color = buttonStyles.main.disabledColor;
-        mainButton.style.cursor = "default";
-        svgElement.style.fill = buttonStyles.main.disabledColor;
-        menuButtons.forEach((button) => (button.disabled = true));
-        mainButton.innerHTML = "0%";
-
-        const tracksWithPlayCounts = await enrichTracksWithPlayCounts(
-          noGenreTracks,
-          (progress) => {
-            mainButton.innerText = `${Math.floor(progress * 0.90)}%`;
-          }
-        );
-
-        if (sortType === "playCount") {
-          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
-            const playCountA = parseInt(a.playCount) || 0;
-            const playCountB = parseInt(b.playCount) || 0;
-            return playCountB - playCountA;
-          });
-        } else if (sortType === "popularity") {
-          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
-            const popA = parseInt(a.popularity) || 0;
-            const popB = parseInt(b.popularity) || 0;
-            return popB - popA;
-          });
-        } else if (sortType === "releaseDate") {
-          sortedTracks = tracksWithPlayCounts.sort((a, b) => {
-            const dateA = new Date(a.releaseDate || 0);
-            const dateB = new Date(b.releaseDate || 0);
-            return dateB - dateA;
-          });
-        }
-
-        mainButton.innerText = "100%";
-        await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
-      } else if (sortType === "scrobbles" || sortType === "personalScrobbles") {
-        try {
-          setButtonProcessing(true);
-          mainButton.style.backgroundColor = buttonStyles.main.disabledBackgroundColor;
-          mainButton.style.color = buttonStyles.main.disabledColor;
-          mainButton.style.cursor = "default";
-          svgElement.style.fill = buttonStyles.main.disabledColor;
-          menuButtons.forEach((button) => (button.disabled = true));
-          mainButton.innerHTML = "0%";
-
-          const result = await handleScrobblesSorting(
-            noGenreTracks,
-            sortType,
-            (progress) => {
-              mainButton.innerText = `${Math.floor(progress * 0.90)}%`;
-            }
-          );
-          sortedTracks = result.sortedTracks;
-          mainButton.innerText = "100%";
-          await createAndPopulatePlaylist(sortedTracks, playlistName, playlistDescription);
-        } catch (error) {
-          resetButtons();
-          Spicetify.showNotification(error.message);
-          return;
-        }
-      }
-    });
   }
 
   const GENRE_CACHE_KEY_PREFIX = 'sort-play-genre-cache-v2-';
