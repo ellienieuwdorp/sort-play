@@ -10684,7 +10684,7 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                 selectedGenresTags.innerHTML = "";
             } else {
                 const genreText = selectedGenres.length > 0 ? `${selectedGenres.length} genre${selectedGenres.length !== 1 ? 's' : ''} selected` : "";
-                const noGenreText = includeNoGenreTracks ? `${selectedGenres.length > 0 ? ' + ' : ''}Include no-genre tracks (${noGenreTracksCount})` : "";
+                const noGenreText = includeNoGenreTracks ? `${selectedGenres.length > 0 ? ' + ' : ''}Include no-genre tracks` : "";
                 selectedGenresDisplay.textContent = genreText + noGenreText;
 
                 selectedGenresTags.innerHTML = selectedGenres.map(genre => `
