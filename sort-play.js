@@ -13123,6 +13123,26 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
                         </label>
                     </div>
                 </div>
+                <div class="setting-row">
+                    <label class="description" for="releaseDateFilterToggle">
+                        Release Date Filter
+                        <span class="tooltip-container">
+                            <span style="color: #888; margin-left: 4px; font-size: 12px; cursor: help;">?</span>
+                            <span class="custom-tooltip">Filter tracks by release year.</span>
+                        </span>
+                    </label>
+                    <div class="action">
+                        <label class="switch">
+                            <input type="checkbox" id="releaseDateFilterToggle">
+                            <span class="sliderx"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="setting-row" id="releaseDateInputs" style="display: none; justify-content: flex-end; gap: 10px; margin-top: -5px;">
+                    <input type="number" id="releaseDateStart" placeholder="Start" min="1900" max="2099" style="width: 60px; background: #333; border: 1px solid #555; color: white; padding: 4px; border-radius: 4px;">
+                    <span style="color: white;">-</span>
+                    <input type="number" id="releaseDateEnd" placeholder="End" min="1900" max="2099" style="width: 60px; background: #333; border: 1px solid #555; color: white; padding: 4px; border-radius: 4px;">
+                </div>
             </div>
             <div class="settings-left-wrapper">
                 <div class="settings-title">Sort Type:</div>
@@ -13210,6 +13230,32 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
       includeNoGenreTracks = includeNoGenreToggle.checked;
       updateFilteredTracksCount();
     });
+
+    const releaseDateFilterToggle = modalContainer.querySelector("#releaseDateFilterToggle");
+    const releaseDateInputs = modalContainer.querySelector("#releaseDateInputs");
+    const releaseDateStartInput = modalContainer.querySelector("#releaseDateStart");
+    const releaseDateEndInput = modalContainer.querySelector("#releaseDateEnd");
+
+    let releaseDateFilterEnabled = false;
+    let releaseDateStart = null;
+    let releaseDateEnd = null;
+
+    releaseDateFilterToggle.addEventListener("change", () => {
+        releaseDateFilterEnabled = releaseDateFilterToggle.checked;
+        releaseDateInputs.style.display = releaseDateFilterEnabled ? "flex" : "none";
+        updateFilteredTracksCount();
+    });
+
+    const handleDateInput = () => {
+        const start = parseInt(releaseDateStartInput.value);
+        const end = parseInt(releaseDateEndInput.value);
+        releaseDateStart = !isNaN(start) ? start : null;
+        releaseDateEnd = !isNaN(end) ? end : null;
+        updateFilteredTracksCount();
+    };
+
+    releaseDateStartInput.addEventListener("input", handleDateInput);
+    releaseDateEndInput.addEventListener("input", handleDateInput);
     
     let selectedGenres = [];
     let excludedGenres = [];
@@ -13225,12 +13271,17 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     noGenreTracksStat.textContent = `No genre: ${noGenreTracksCount}`;
 
     function updateFilteredTracksCount() {
-      let filteredTracks = filterTracksByGenres(
-        tracks,
-        selectedGenres,
-        excludedGenres,
-        trackGenreMap  
-      );
+      let filteredTracks;
+      if (selectedGenres.length === 0 && excludedGenres.length === 0 && releaseDateFilterEnabled) {
+          filteredTracks = [...tracks];
+      } else {
+          filteredTracks = filterTracksByGenres(
+            tracks,
+            selectedGenres,
+            excludedGenres,
+            trackGenreMap  
+          );
+      }
 
       const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
       const noGenreUris = new Set(noGenreTracks.map(t => t.uri));
@@ -13241,6 +13292,19 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
           filteredTracks = filteredTracks.concat(missing);
       } else {
           filteredTracks = filteredTracks.filter(t => !noGenreUris.has(t.uri));
+      }
+
+      if (releaseDateFilterEnabled) {
+          filteredTracks = filteredTracks.filter(t => {
+              if (!t.releaseDate) return false;
+              const year = parseInt(t.releaseDate.substring(0, 4));
+              if (isNaN(year)) return false;
+              
+              if (releaseDateStart !== null && year < releaseDateStart) return false;
+              if (releaseDateEnd !== null && year > releaseDateEnd) return false;
+              
+              return true;
+          });
       }
 
       filteredTracksStat.textContent = `Filtered tracks: ${filteredTracks.length}`;
@@ -13446,18 +13510,23 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
 
     createPlaylistButton.addEventListener("click", async () => {
       selectionErrorDiv.style.display = 'none';
-      if (selectedGenres.length === 0 && excludedGenres.length === 0 && !includeNoGenreTracks) {
-          selectionErrorDiv.textContent = "Please select at least one genre to include or exclude, or enable 'Include No-Genre Tracks'.";
+      if (selectedGenres.length === 0 && excludedGenres.length === 0 && !includeNoGenreTracks && !releaseDateFilterEnabled) {
+          selectionErrorDiv.textContent = "Please select at least one genre to include or exclude, enable 'Include No-Genre Tracks', or enable 'Release Date Filter'.";
           selectionErrorDiv.style.display = 'block';
           return;
       }
     
-      let filteredTracks = filterTracksByGenres(
-          tracks,
-          selectedGenres,
-          excludedGenres,
-          trackGenreMap
-      );
+      let filteredTracks;
+      if (selectedGenres.length === 0 && excludedGenres.length === 0 && releaseDateFilterEnabled) {
+          filteredTracks = [...tracks];
+      } else {
+          filteredTracks = filterTracksByGenres(
+              tracks,
+              selectedGenres,
+              excludedGenres,
+              trackGenreMap
+          );
+      }
 
       const noGenreTracks = getTracksWithoutGenres(tracks, trackGenreMap);
       const noGenreUris = new Set(noGenreTracks.map(t => t.uri));
@@ -13468,6 +13537,19 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
           filteredTracks = filteredTracks.concat(missing);
       } else {
           filteredTracks = filteredTracks.filter(t => !noGenreUris.has(t.uri));
+      }
+
+      if (releaseDateFilterEnabled) {
+          filteredTracks = filteredTracks.filter(t => {
+              if (!t.releaseDate) return false;
+              const year = parseInt(t.releaseDate.substring(0, 4));
+              if (isNaN(year)) return false;
+              
+              if (releaseDateStart !== null && year < releaseDateStart) return false;
+              if (releaseDateEnd !== null && year > releaseDateEnd) return false;
+              
+              return true;
+          });
       }
     
       if (filteredTracks.length === 0) {
@@ -13715,8 +13797,8 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     const cachedData = localStorage.getItem(cacheKey);
     if (cachedData) {
       try {
-        const { genres, timestamp } = JSON.parse(cachedData);  
-        return genres;  
+        const { genres, releaseDate, timestamp } = JSON.parse(cachedData);  
+        return { genres, releaseDate };  
       } catch (error) {
         console.error('Error parsing cached genre data:', error);
         localStorage.removeItem(cacheKey); 
@@ -13725,9 +13807,9 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
     return null;
   }
   
-  function setCachedTrackGenres(trackId, genres) {
+  function setCachedTrackGenres(trackId, genres, releaseDate) {
     const cacheKey = getGenreCacheKey(trackId);
-    const dataToCache = { genres, timestamp: Date.now() }; 
+    const dataToCache = { genres, releaseDate, timestamp: Date.now() };
   
     try {
       localStorage.setItem(cacheKey, JSON.stringify(dataToCache));
@@ -13908,7 +13990,12 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
             if (!track) continue;
 
             try {
-                const genres = await getTrackGenres(track.uri);
+                const { genres, releaseDate } = await getTrackGenres(track.uri);
+                
+                if (releaseDate) {
+                    track.releaseDate = releaseDate;
+                }
+
                 if (genres.length > 0) {
                     const mappedAndNormalizedGenres = mapAndNormalizeGenres(genres);
                     const finalUniqueGenres = Array.from(new Set(mappedAndNormalizedGenres.map(g => JSON.stringify(g)))).map(s => JSON.parse(s));
@@ -14011,9 +14098,9 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
   async function getTrackGenres(trackUri) {
     const trackId = trackUri.split(":")[2];
 
-    const cachedGenres = getCachedTrackGenres(trackId);
-    if (cachedGenres) {
-        return cachedGenres;
+    const cachedData = getCachedTrackGenres(trackId);
+    if (cachedData && cachedData.releaseDate) {
+        return cachedData;
     }
 
     try {
@@ -14030,11 +14117,23 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
 
         if (!trackDetails?.artists?.length) {
             console.warn(`No artists found for track URI: ${trackUri}`);
-            return [];
+            return { genres: [], releaseDate: null };
         }
 
-        const isRecent = isTrackRecent(trackDetails.album.release_date);
+        const releaseDate = trackDetails.album.release_date;
+        const isRecent = isTrackRecent(releaseDate);
         let spotifyGenres = new Set();
+
+        if (cachedData) {
+            // We have genres but missing releaseDate, so let's preserve genres and just add date
+            const finalGenres = cachedData.genres || [];
+            if (finalGenres.length > 0) {
+                setCachedTrackGenres(trackId, finalGenres, releaseDate);
+            } else if (!isRecent) {
+                setCachedTrackGenres(trackId, [], releaseDate);
+            }
+            return { genres: finalGenres, releaseDate };
+        }
 
         const artistIds = [...new Set(trackDetails.artists.map(artist => artist.uri.split(":")[2]))];
 
@@ -14100,12 +14199,12 @@ function createKeywordTag(keyword, container, keywordSet, onUpdateCallback = () 
         const finalGenres = Array.from(combinedGenres.values());
 
         if (finalGenres.length > 0) {
-            setCachedTrackGenres(trackId, finalGenres);
+            setCachedTrackGenres(trackId, finalGenres, releaseDate);
         } else if (!isRecent) {
-            setCachedTrackGenres(trackId, []);
+            setCachedTrackGenres(trackId, [], releaseDate);
         }
 
-        return finalGenres;
+        return { genres: finalGenres, releaseDate };
 
     } catch (error) {
         console.error(`Error fetching details for track ID ${trackId}:`, error);
